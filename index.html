@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>我的資產</title>
+<style>
+  :root {
+    --bg:#f7f7f5; --card:#fff; --ink:#1b1f23; --soft:#6b7280; --line:#e5e7eb;
+    --up:#c0392b;      /* 台股習慣：漲紅跌綠 */
+    --down:#1e8449;
+    --warn:#8a6212; --warn-bg:#fdf3d8;
+    --tab:#ececeb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#15181c; --card:#1d2126; --ink:#e6e9ec; --soft:#9aa3ad; --line:#2c3239;
+            --up:#e57373; --down:#66bb6a; --warn:#d3a44d; --warn-bg:#2e2617; --tab:#252b31; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:15px/1.6 -apple-system,"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif; }
+  .wrap { max-width:640px; margin:0 auto; padding:1rem 1rem 3rem; }
+
+  header { display:flex; align-items:baseline; gap:.6rem; flex-wrap:wrap; margin:.4rem 0 .8rem; }
+  header .who { color:var(--soft); font-size:.85rem; }
+  select { font:inherit; padding:.3rem .5rem; border-radius:6px; margin-left:auto;
+           border:1px solid var(--line); background:var(--card); color:var(--ink); }
+
+  /* 分頁切換 */
+  .tabs { display:flex; background:var(--tab); border-radius:9px; padding:3px; margin-bottom:1rem; }
+  .tabs button {
+    flex:1; font:inherit; font-weight:600; padding:.45rem 0; border:0; cursor:pointer;
+    background:transparent; color:var(--soft); border-radius:7px;
+  }
+  .tabs button[aria-selected="true"] { background:var(--card); color:var(--ink); box-shadow:0 1px 3px rgba(0,0,0,.12); }
+
+  .total { background:var(--card); border:1px solid var(--line); border-radius:10px;
+           padding:1rem; margin-bottom:1rem; }
+  .total .big { font-size:1.8rem; font-weight:700; font-variant-numeric:tabular-nums; }
+  .total .row { display:flex; justify-content:space-between; gap:1rem;
+                font-variant-numeric:tabular-nums; }
+  .total .row + .row { margin-top:.3rem; }
+  .total .k { color:var(--soft); }
+  .total hr { border:0; border-top:1px solid var(--line); margin:.7rem 0; }
+
+  /* 圓餅 */
+  .pie { display:flex; align-items:center; gap:1rem; flex-wrap:wrap; }
+  .pie svg { flex:0 0 128px; }
+  .legend { flex:1; min-width:170px; }
+  .legend .row { display:flex; align-items:center; gap:.5rem; font-size:.88rem;
+                 font-variant-numeric:tabular-nums; }
+  .legend .row + .row { margin-top:.28rem; }
+  .dot { width:.62rem; height:.62rem; border-radius:2px; flex:0 0 auto; }
+  .legend .nm { flex:1; }
+  .legend .pc { color:var(--soft); width:3.2rem; text-align:right; }
+
+  h2 { font-size:.9rem; color:var(--soft); margin:1.4rem 0 .5rem; font-weight:600;
+       letter-spacing:.03em; }
+
+  .item { background:var(--card); border:1px solid var(--line); border-radius:10px;
+          padding:.85rem 1rem; margin-bottom:.6rem; }
+  .item .name { font-weight:600; margin-bottom:.35rem; }
+  .item .row { display:flex; justify-content:space-between; gap:1rem;
+               font-size:.88rem; font-variant-numeric:tabular-nums; }
+  .item .k { color:var(--soft); }
+  .up { color:var(--up); } .down { color:var(--down); }
+
+  /* 總攬的逐帳戶列：一行一個，不用卡片，太多張會看不完 */
+  .acct { background:var(--card); border:1px solid var(--line); border-radius:10px;
+          padding:.3rem .2rem; margin-bottom:.6rem; }
+  .acct .r { display:flex; align-items:baseline; gap:.6rem; padding:.5rem .8rem;
+             font-variant-numeric:tabular-nums; }
+  .acct .r + .r { border-top:1px solid var(--line); }
+  .acct .nm { flex:1; }
+  .acct .sub { display:block; font-size:.73rem; color:var(--soft); }
+  .acct .amt { font-weight:600; }
+
+  .asof { font-size:.75rem; color:var(--soft); margin-top:.45rem;
+          padding-top:.45rem; border-top:1px dashed var(--line); }
+  .note { background:var(--warn-bg); color:var(--warn); border:1px solid var(--warn);
+          border-radius:8px; padding:.7rem .9rem; font-size:.85rem; margin-bottom:.6rem; }
+
+  /* 說明搬到最下面之後，數字旁邊留的那一行小字 */
+  .hint { color:var(--warn); font-size:.78rem; margin:-.6rem 0 1rem; }
+
+  /* 這一期關帳了沒 */
+  .snap { font-size:.75rem; color:var(--soft); margin-top:.7rem;
+          padding-top:.6rem; border-top:1px dashed var(--line); }
+  .snap b { color:var(--ink); font-weight:600; }
+  .snap.open b, .snap.open { color:var(--warn); }
+  .msg { text-align:center; color:var(--soft); padding:3rem 1rem; line-height:1.9; }
+
+  /* 狀態列：這份數字是幾點算的、正在不在更新 */
+  .bar { display:flex; align-items:center; gap:.6rem; font-size:.78rem;
+         color:var(--soft); margin:-.4rem 0 1rem; min-height:1.6rem; }
+  .bar .stale { color:var(--warn); }
+  .bar button { font:inherit; margin-left:auto; padding:.25rem .7rem; cursor:pointer;
+                border:1px solid var(--line); border-radius:99px;
+                background:var(--card); color:var(--ink); }
+  .bar button[disabled] { opacity:.5; cursor:default; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .bar .spin { display:inline-block; width:.7rem; height:.7rem; border-radius:50%;
+               border:2px solid var(--line); border-top-color:var(--soft);
+               animation:spin .8s linear infinite; }
+  @media (prefers-reduced-motion:reduce) { .bar .spin { animation:none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="app"><p class="msg">載入中…</p></div>
+</div>
+
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script>
+/* ---------------------------------------------------------------------------
+ * 我的資產（唯讀）
+ *
+ * ⚠️ 這一頁**不能放在 Apps Script 上**。
+ *    Apps Script 的 HtmlService 一律把內容關進 <iframe sandbox=...>，
+ *    而 liff.init() 在那裡面永遠不會 resolve —— 從 LINE 開啟實測卡死
+ *    超過 10 秒（2026-09-03）。SDK 載得到、沙箱也給了 allow-scripts，
+ *    但 LIFF 要跟 LINE 客戶端搭上線，隔著沙箱 iframe 搭不上。
+ *
+ * ⚠️ 下面兩個常數**不是密鑰**，公開沒關係：
+ *      LIFF_ID     本來就會出現在使用者點的網址裡
+ *      API         端點網址。讀資料要 LINE 的 ID token 且在白名單內；
+ *                  寫資料要另一把 32 字元的密鑰，而那把不在這一頁裡。
+ * ------------------------------------------------------------------------ */
+var LIFF_ID = '2011390460-5A2pfyDW';
+var API = 'https://script.google.com/macros/s/AKfycbw_8g6tg6RwBV-184FhYKJ5osyKEGi0s7VRCLUaurwJSCQ7ecDe-1lz4SW6lCHy91i_5w/exec';
+
+var idToken = null;
+var app = document.getElementById('app');
+function msg(t) { app.innerHTML = '<p class="msg">' + t + '</p>'; }
+
+/* ---- 狀態 -----------------------------------------------------------------
+ * ⚠️ **一發拿回全部**（總攬 + 投資明細 + 期間清單），切分頁完全不連線。
+ *
+ *    原本是三發一起送，想說瀏覽器會平行。**不會。**
+ *    Apps Script 對同一個使用者是排隊執行的，同時送出三發，伺服器還是
+ *    一發跑完才跑下一發 —— 2026-09-03 實測 overview 3.6 秒、holdings 因為
+ *    排在後面變成 7.7 秒，加上期間清單那一發，最後一份要等 17 秒才到齊。
+ *    每一發還都要付一次 Google 的往返成本（空的 __ping__ 就要 1.6 秒）。
+ *    平行是假的，**發數**才是成本。
+ *
+ * ⚠️ 那個固定成本**不受我們控制**，也不穩定：什麼都不做的 __ping__
+ *    量五次是 1.8 / 2.5 / 4.2 / 12.3 / 21.2 秒。所以不要再往
+ *    「把伺服器算快一點」的方向調了 —— 真正屬於算報表的只有 3.5 秒左右。
+ *    要讓人覺得快，唯一有效的是**開啟時不要空等**：先把上次的畫面畫出來。
+ */
+var TABS = [
+  { id: 'overview', 名稱: '總攬' },
+  { id: 'holdings', 名稱: '投資明細' },
+];
+var tab = 'overview';
+var period = null;          // null = 讓伺服器決定最新一期
+var cache = {};             // 期間 → { 狀態:'loading'|'ok'|'error', data }
+var periods = [];
+
+function n(v, d) {
+  if (v === null || v === undefined || v === '') return '—';
+  return Number(v).toLocaleString('en-US',
+    { minimumFractionDigits: d || 0, maximumFractionDigits: d || 0 });
+}
+function pct(v) {
+  if (v === null || v === undefined) return '—';
+  return (v >= 0 ? '+' : '') + (v * 100).toFixed(2) + '%';
+}
+function cls(v) { return v === null || v === undefined ? '' : (v >= 0 ? 'up' : 'down'); }
+function esc(s) {
+  return String(s === null || s === undefined ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function when(v) {
+  if (!v) return '';
+  var d = new Date(v);
+  if (isNaN(d.getTime())) return String(v).slice(0, 16);
+  var p = function (x) { return (x < 10 ? '0' : '') + x; };
+  return p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+
+/**
+ * 打 Apps Script。
+ *
+ * ⚠️ Content-Type 一定要用 text/plain。
+ *    用 application/json 會觸發瀏覽器的 preflight（OPTIONS），
+ *    而 Apps Script 不處理 OPTIONS —— 請求會在還沒送出前就被瀏覽器擋掉，
+ *    而且錯誤訊息只說「CORS」，看不出真正原因。
+ */
+function call(payload) {
+  return fetch(API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+    body: JSON.stringify(payload),
+    redirect: 'follow',
+  }).then(function (r) { return r.json(); });
+}
+
+/* ---- 上次看到的畫面 -------------------------------------------------------
+ * ⚠️ 存的是**財務資料**，所以一定要綁 LINE 使用者。
+ *    不綁的話，別人用同一支手機開這個網址，會先看到上一個人的資產
+ *    —— 即使他根本不在白名單裡、伺服器一定會拒絕他。
+ *    畫面比伺服器早一步，把關也要早一步。
+ *
+ * ⚠️ 每一個存取都要包 try/catch。無痕模式下 localStorage 會直接丟例外，
+ *    沒包的話整頁白掉，而錯誤訊息完全看不出跟儲存有關。
+ */
+var 存檔鍵 = null;
+
+function 存檔讀() {
+  if (!存檔鍵) return null;
+  try {
+    var v = JSON.parse(localStorage.getItem(存檔鍵));
+    return v && v.data && v.data.ok ? v : null;
+  } catch (e) { return null; }
+}
+function 存檔寫(data) {
+  if (!存檔鍵) return;
+  try {
+    localStorage.setItem(存檔鍵, JSON.stringify({ 存於: Date.now(), data: data }));
+  } catch (e) { /* 滿了或無痕，不影響功能 */ }
+}
+
+/**
+ * 抓某一期的全部資料。同一期只會連線一次；force 會繞過兩邊的快取。
+ */
+function load(force) {
+  var p = period;
+  var slot = cache[String(p)] || (cache[String(p)] = { 狀態: 'loading' });
+  if (slot.送出過 && !force) { draw(); return; }
+  slot.送出過 = true;
+  slot.更新中 = true;
+  slot.錯誤 = null;
+  draw();
+
+  call({ action: 'web_all', idToken: idToken, '期間': p, 重算: !!force })
+    .then(function (r) {
+      if (r && r.ok && r.期間) {
+        if (!period) period = r.期間;
+        // ⚠️ 回來的期間可能跟送出去的不同（送 null 時一定不同），
+        //    要照**回來的**那一期歸檔。照送出去的存，
+        //    使用者從下拉選回同一期會整個重打一次。
+        if (String(r.期間) !== String(p)) delete cache[String(p)];
+        cache[String(r.期間)] = { 狀態: 'ok', data: r, 送出過: true };
+        if (r.期間清單 && r.期間清單.length) periods = r.期間清單;
+        存檔寫(r);
+      } else {
+        壞掉(p, slot, (r && r.error) || '讀不到資料');
+      }
+      draw();
+    })
+    .catch(function (e) {
+      壞掉(p, slot, String(e && e.message || e));
+      draw();
+    });
+}
+
+/**
+ * 更新失敗。
+ *
+ * ⚠️ 手上已經有資料（存檔或上一次抓到的）就**留著**，只在上面掛一條錯誤。
+ *    清掉換成錯誤訊息的話，一次連線不穩就會把畫得好好的數字整片抹掉 ——
+ *    對使用者來說那看起來像資料不見了。
+ */
+function 壞掉(p, slot, 訊息) {
+  slot.更新中 = false;
+  slot.錯誤 = 訊息;
+  if (!slot.data) slot.狀態 = 'error';
+  cache[String(p)] = slot;
+}
+
+window.onerror = function (m, src, ln) {
+  msg('頁面出錯：' + esc(m) + '<br><small>' + esc(String(src).slice(-40)) + ':' + ln + '</small>');
+};
+
+if (typeof liff === 'undefined') {
+  msg('LIFF SDK 沒有載入。<br><small>檢查網路，或這個 host 擋掉了外部 script。</small>');
+} else {
+  msg('LIFF 初始化中…');
+  var settled = false;
+  setTimeout(function () { if (!settled) msg('LIFF 初始化沒有回應（超過 10 秒）。'); }, 10000);
+
+  liff.init({ liffId: LIFF_ID })
+    .then(function () {
+      settled = true;
+      if (!liff.isLoggedIn()) { liff.login(); return; }
+      idToken = liff.getIDToken();
+      if (!idToken) { msg('拿不到 LINE 身分。<br><small>LIFF 的 scope 要勾 openid。</small>'); return; }
+
+      // 存檔綁在這個 LINE 帳號上 —— 換人開就讀不到上一個人的資料
+      try {
+        var me = liff.getDecodedIDToken();
+        if (me && me.sub) 存檔鍵 = 'ledger:v1:' + me.sub;
+      } catch (e) { /* 拿不到就不用存檔，不影響主流程 */ }
+
+      var 舊 = 存檔讀();
+      if (舊) {
+        period = 舊.data.期間;
+        periods = 舊.data.期間清單 || [];
+        cache[String(period)] = { 狀態: 'ok', data: 舊.data, 存於: 舊.存於 };
+      }
+      load();   // 期間清單也在這一發裡，不要另外再打一次
+    })
+    .catch(function (e) {
+      settled = true;
+      msg('LIFF 起不來：' + esc(e && (e.message || e.code || e)));
+    });
+}
+
+// ---------------------------------------------------------------------------
+// 畫面
+// ---------------------------------------------------------------------------
+
+function draw() {
+  var cur = cache[String(period)] || { 狀態: 'loading' };
+  var head = cur.data && cur.data.ok ? cur.data : null;
+  var part = head ? (tab === 'overview' ? head.總攬 : head.投資) : null;
+
+  var h = ['<header>'
+    + '<span class="who">' + esc((head && head.帳本) || '') + '</span>'
+    + '<span class="who">' + esc((head && head.顯示名稱) || '') + '</span>'
+    + periodSelect() + '</header>'];
+
+  h.push('<div class="tabs">' + TABS.map(function (x) {
+    return '<button role="tab" aria-selected="' + (x.id === tab) + '" data-tab="' + x.id + '">'
+      + x.名稱 + '</button>';
+  }).join('') + '</div>');
+
+  h.push(barHtml(cur, head));
+
+  // 有先前的資料就先畫先前的，狀態列會說明正在更新
+  if (cur.狀態 === 'loading' && !part) h.push('<p class="msg">讀取中…</p>');
+  else if (cur.狀態 === 'error' || !part || !part.ok) {
+    h.push('<p class="msg">'
+      + esc((part && part.error) || (cur.data && cur.data.error) || '讀不到資料') + '</p>');
+  } else {
+    h.push(tab === 'overview' ? overviewHtml(part) : holdingsHtml(part));
+  }
+
+  app.innerHTML = h.join('');
+
+  Array.prototype.forEach.call(app.querySelectorAll('[data-tab]'), function (b) {
+    b.onclick = function () {
+      tab = b.getAttribute('data-tab');
+      draw();                      // 資料早就在手上，這裡不連線
+    };
+  });
+  var sel = app.querySelector('#p');
+  if (sel) sel.onchange = function () {
+    period = this.value;
+    load();                        // 那一期抓過就直接畫，沒抓過才連線
+  };
+  var rf = app.querySelector('#refresh');
+  if (rf) rf.onclick = function () { load(true); };
+}
+
+/**
+ * 這份數字是幾點算的、正在不在更新。
+ *
+ * ⚠️ 一定要看得到時間。伺服器會把結果快取 15 分鐘、頁面又會先畫上次的存檔，
+ *    所以畫面上的數字**本來就可能不是此刻的** —— 不寫出來的話，
+ *    手動改完試算表回來看發現沒變，會以為是寫入失敗。
+ */
+function barHtml(cur, head) {
+  var L = [];
+  if (cur.更新中) L.push('<span class="spin"></span><span>更新中…</span>');
+  if (cur.錯誤) {
+    L.push('<span class="stale">更新失敗：' + esc(cur.錯誤)
+      + (head ? '，顯示的是先前的資料' : '') + '</span>');
+  }
+  if (!cur.更新中 && !cur.錯誤 && head) {
+    L.push('<span>資料計算於 ' + esc(when(head.算出時間)) + '</span>');
+  }
+  if (!L.length) return '';
+  return '<div class="bar">' + L.join('')
+    + '<button id="refresh"' + (cur.更新中 ? ' disabled' : '') + '>重新整理</button></div>';
+}
+
+function periodSelect() {
+  var list = periods.length ? periods : (period ? [period] : []);
+  if (!list.length) return '';
+  return '<select id="p">' + list.map(function (x) {
+    return '<option value="' + esc(x) + '"' + (x === period ? ' selected' : '') + '>' + esc(x) + '</option>';
+  }).join('') + '</select>';
+}
+
+// ---- 總攬 -----------------------------------------------------------------
+
+var 色 = {
+  現金: '#3b82a6', 股票: '#c0783a', 黃金: '#c9a227', 外幣: '#6b8f71',
+  美股: '#8a6fa8', 其他: '#8b929a',
+};
+function colorOf(k, i) {
+  return 色[k] || ['#3b82a6', '#c0783a', '#c9a227', '#6b8f71', '#8a6fa8', '#8b929a'][i % 6];
+}
+
+/**
+ * 甜甜圈。用 stroke-dasharray 疊圓圈，不算弧線路徑 ——
+ * 少了一堆三角函數，也不會在 100% 只有一段時畫出破圖。
+ */
+function donut(parts, total) {
+  if (!total) return '';
+  var R = 54, C = 2 * Math.PI * R, off = 0;
+  var segs = parts.map(function (p, i) {
+    var len = C * (p.金額 / total);
+    var s = '<circle cx="64" cy="64" r="' + R + '" fill="none" stroke="' + colorOf(p.類別, i) + '"'
+      + ' stroke-width="17" stroke-dasharray="' + len.toFixed(2) + ' ' + (C - len).toFixed(2) + '"'
+      + ' stroke-dashoffset="' + (-off).toFixed(2) + '" transform="rotate(-90 64 64)"></circle>';
+    off += len;
+    return s;
+  }).join('');
+  return '<svg viewBox="0 0 128 128" width="128" height="128" aria-hidden="true">' + segs + '</svg>';
+}
+
+function overviewHtml(r) {
+  var h = [];
+  var notes = (r.提醒 || []).map(function (t) { return esc(t); });
+  // ⚠️ 暫結的原因要寫出來。只標一個「暫結」而不說缺什麼，
+  //    看的人不知道要去補哪一份，那個標記就只是讓人不安而已。
+  if (r.快照 && r.快照.完整度說明) {
+    notes.push('<b>' + esc(r.快照.snapshot_id) + ' 是暫結</b>，因為：<br>'
+      + esc(r.快照.完整度說明).split('；').join('<br>・'));
+  }
+
+  var t = r.合計 || {};
+  h.push('<div class="total">'
+    + '<div class="row"><span class="k">淨資產</span>'
+    + '<span class="big">' + n(t.淨資產) + '</span></div>'
+    + '<hr>'
+    + '<div class="row"><span class="k">資產</span><span>' + n(t.資產) + '</span></div>'
+    + '<div class="row"><span class="k">負債</span><span>' + n(t.負債) + '</span></div>'
+    + snapHtml(r.快照)
+    + '</div>');
+  h.push(hintHtml(notes.length));
+
+  var parts = r.組成 || [];
+  if (parts.length) {
+    h.push('<div class="total"><div class="pie">' + donut(parts, t.資產)
+      + '<div class="legend">' + parts.map(function (p, i) {
+        return '<div class="row"><span class="dot" style="background:' + colorOf(p.類別, i) + '"></span>'
+          + '<span class="nm">' + esc(p.類別) + '</span>'
+          + '<span>' + n(p.金額) + '</span>'
+          + '<span class="pc">' + (t.資產 ? (p.金額 / t.資產 * 100).toFixed(1) : '0.0') + '%</span></div>';
+      }).join('') + '</div></div></div>');
+  }
+
+  h.push(acctList('資產', r.資產));
+  h.push(acctList('負債', r.負債));
+  h.push(noteBlock(notes));
+  return h.join('');
+}
+
+/**
+ * 這一期關帳了沒。
+ *
+ * ⚠️ 三種狀態要分得出來，它們的意思差很多：
+ *      尚未關帳  數字每次打開都重算，底表一改就跟著變
+ *      暫結      關過了，但當時還有缺件，補齊後會再產生新版次
+ *      正式      關過了，而且當時沒有缺件
+ *    另外版次 > 1 表示這個月的數字**變過** —— 一定要標出來，
+ *    不然看的人沒辦法知道他上次看到的跟現在不一樣。
+ */
+function snapHtml(k) {
+  if (!k) {
+    return '<div class="snap">尚未關帳 —— 這些數字每次打開都重算，底表一改就會跟著變</div>';
+  }
+  var 待補 = k.狀態 === '暫結';
+  // ⚠️ 孤兒 = 最新那一版自己標著「已修正」，表示取代它的那一列被刪掉了。
+  //    直接照 狀態 印會變成「已修正 v1」，讀起來像「這一版修正過」，
+  //    意思跟事實相反。要講成缺了東西。
+  if (k.孤兒) {
+    return '<div class="snap open"><b>快照缺了一版</b>　v' + k.版次
+      + ' 標著「已修正」，但取代它的那一版不在 Ops_PeriodClose 裡</div>';
+  }
+  var L = ['<b>' + esc(k.狀態) + ' v' + k.版次 + '</b>'];
+  if (k.已修正) L.push('這個月的數字修正過');
+  if (k.產生時間) L.push('關於 ' + esc(when(k.產生時間)));
+  return '<div class="snap' + (待補 || k.已修正 ? ' open' : '') + '">'
+    + L.join('　·　') + '</div>';
+}
+
+/**
+ * 「說明在下面」的那一行小字。
+ *
+ * ⚠️ 說明搬到頁尾之後，**一定要留這一行**。
+ *    上面那些合計是沿用舊餘額、或排除了沒報價的項目算出來的；
+ *    把說明搬走卻不留記號，數字就變成看起來很確定的錯數字 ——
+ *    那比一開始把警告疊在頂端還糟。
+ */
+function hintHtml(n, 前綴) {
+  if (!n) return '';
+  return '<div class="hint">⚠️ ' + (前綴 ? esc(前綴) + '　' : '')
+    + n + ' 則說明在最下面</div>';
+}
+
+/** 頁尾的說明區。內容已經是 HTML，這裡不再 esc。 */
+function noteBlock(rows) {
+  if (!rows.length) return '';
+  return '<h2>說明</h2>' + rows.map(function (t) {
+    return '<div class="note">' + t + '</div>';
+  }).join('');
+}
+
+function acctList(title, rows) {
+  if (!rows || !rows.length) return '';
+  return '<h2>' + title + '</h2><div class="acct">' + rows.map(function (x) {
+    // ⚠️ 狀態不是「已驗證」就一定要寫出來 —— 那表示這個數字是沿用舊的、
+    //    或是有東西沒報價。看不到的話你會以為它是這一期的。
+    var sub = x.狀態 && x.狀態 !== '已驗證'
+      ? '<span class="sub">' + esc(x.狀態) + '</span>'
+      : '<span class="sub">' + esc(x.基準日 || '') + '</span>';
+    return '<div class="r"><span class="nm">' + esc(x.帳戶) + sub + '</span>'
+      + '<span class="amt">' + n(x.金額) + '</span></div>';
+  }).join('') + '</div>';
+}
+
+// ---- 投資明細 --------------------------------------------------------------
+
+function holdingsHtml(r) {
+  var h = [];
+  var notes = [];
+
+  // ⚠️ 這一條**不搬到下面**。其他說明是在講「數字有前提」，
+  //    這一條是在講「數字是錯的」—— 賣出列沒有沖銷明細時，各批剩多少
+  //    根本算不出來。要人先看到才不會拿去用。
+  if (r.unreliable && r.unreliable.length) {
+    h.push('<div class="note"><b>⚠️ 這份數字不能信</b><br>'
+      + esc(r.unreliable.join('；'))
+      + '<br>賣出列沒有沖銷明細，算不出各批還剩多少。</div>');
+  }
+
+  // ⚠️ 要點名是哪幾項、成本多少。只說「有 N 項沒有報價」等於沒說 ——
+  //    看的人沒辦法判斷那個合計少了多少、能不能用。
+  var np = (r.合計 && r.合計.無報價項目) || [];
+  if (np.length) {
+    notes.push('<b>上面的合計不含這 ' + np.length + ' 項</b>（沒有報價）：<br>'
+      + np.map(function (x) { return '・' + esc(x.名稱) + '　成本 ' + n(x.成本); }).join('<br>')
+      + '<br><small>成本與市值都排除掉，這樣兩個數才能相減。</small>');
+  }
+
+  var t = r.合計 || {};
+  h.push('<div class="total">'
+    + '<div class="row"><span class="k">市值</span>'
+    + '<span class="big">' + n(t.市值) + '</span></div>'
+    + '<div class="row"><span class="k">投入成本</span><span>' + n(t.成本) + '</span></div>'
+    + '<div class="row"><span class="k">未實現損益</span>'
+    + '<span class="' + cls(t.未實現損益) + '">' + (t.未實現損益 === null ? '—'
+        : (t.未實現損益 >= 0 ? '+' : '') + n(t.未實現損益)) + '　' + pct(t.報酬率) + '</span></div>'
+    + '</div>');
+  h.push(hintHtml(notes.length, np.length ? '合計不含 ' + np.length + ' 項無報價' : ''));
+
+  h.push(section('股票', r.股票, function (x) {
+    return {
+      name: x.標的,
+      rows: [['股數', n(x.股數)], ['平均成本', n(x.加權平均成本, 2)],
+             ['成本合計', n(x.成本合計)], ['市價', n(x.市價, 2)], ['市值', n(x.市值)]],
+      pl: x.未實現損益, ret: x.報酬率,
+      基準日: x.價格基準日, 來源: x.價格來源, 抓: x.抓取時間,
+    };
+  }));
+  h.push(section('黃金', r.黃金, function (x) {
+    return {
+      name: x.帳戶,
+      rows: [['持有', n(x.持有公克, 2) + ' 公克'], ['平均成本', n(x.加權平均成本_每公克, 2) + ' /克'],
+             ['成本合計', n(x.成本合計)], ['牌價', n(x.牌價_每公克, 2) + ' /克'], ['市值', n(x.市值)]],
+      pl: x.未實現損益, ret: x.報酬率,
+      基準日: x.價格基準日, 來源: x.價格來源, 抓: x.抓取時間,
+    };
+  }));
+  h.push(section('美金', r.美金, function (x) {
+    return {
+      name: x.帳戶,
+      rows: [['餘額', n(x.餘額_USD, 2) + ' USD'], ['平均匯率', n(x.加權平均成本_每美元, 4)],
+             ['投入成本', n(x.投入成本_TWD)], ['即期匯率', n(x.即期匯率, 4)], ['市值', n(x.市值_TWD)]],
+      pl: x.匯兌損益, ret: x.報酬率,
+      基準日: x.匯率基準日, 來源: x.匯率來源, 抓: x.抓取時間,
+    };
+  }));
+  h.push(noteBlock(notes));
+  return h.join('');
+}
+
+function section(title, rows, map) {
+  if (!rows || !rows.length) return '';
+  var out = ['<h2>' + title + '</h2>'];
+  rows.forEach(function (x) {
+    var d = map(x);
+    var body = d.rows.map(function (kv) {
+      return '<div class="row"><span class="k">' + kv[0] + '</span><span>' + kv[1] + '</span></div>';
+    }).join('');
+    var pl = '<div class="row"><span class="k">未實現</span><span class="' + cls(d.pl) + '">'
+      + (d.pl === null || d.pl === undefined ? '—'
+         : (d.pl >= 0 ? '+' : '') + n(d.pl)) + '　' + pct(d.ret) + '</span></div>';
+
+    // ⚠️ 價格是哪一天的、什麼時候抓的，一定要顯示。
+    //    不顯示的話看的人會以為那是「現在」的價 —— 那是這頁最容易誤導的地方。
+    var asof = d.來源 === '無報價'
+      ? '<div class="asof">沒有報價，市值算不出來</div>'
+      : '<div class="asof">價格 ' + esc(d.基準日 || '?') + '　來源 ' + esc(d.來源 || '?')
+        + (d.抓 ? '　抓取 ' + esc(when(d.抓)) : '') + '</div>';
+
+    out.push('<div class="item"><div class="name">' + esc(d.name) + '</div>'
+      + body + pl + asof + '</div>');
+  });
+  return out.join('');
+}
+</script>
+</body>
+</html>
