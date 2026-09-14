@@ -150,6 +150,9 @@ function msg(t) { app.innerHTML = '<p class="msg">' + t + '</p>'; }
  */
 var TABS = [
   { id: 'overview', 名稱: '總攬' },
+  // ⚠️ 收入這一頁是**年度**的，其他兩頁是某一期的。上面的期間下拉還是 YYYY-MM，
+  //    所以這一頁一定要自己把年度寫出來，否則看的人會以為那是那一個月的收入。
+  { id: 'income', 名稱: '收入' },
   { id: 'holdings', 名稱: '投資明細' },
 ];
 var tab = 'overview';
@@ -314,7 +317,9 @@ if (typeof liff === 'undefined') {
 function draw() {
   var cur = cache[String(period)] || { 狀態: 'loading' };
   var head = cur.data && cur.data.ok ? cur.data : null;
-  var part = head ? (tab === 'overview' ? head.總攬 : head.投資) : null;
+  var part = head
+    ? (tab === 'overview' ? head.總攬 : (tab === 'income' ? head.收入 : head.投資))
+    : null;
 
   var h = ['<header>'
     + '<span class="who">' + esc((head && head.帳本) || '') + '</span>'
@@ -334,7 +339,8 @@ function draw() {
     h.push('<p class="msg">'
       + esc((part && part.error) || (cur.data && cur.data.error) || '讀不到資料') + '</p>');
   } else {
-    h.push(tab === 'overview' ? overviewHtml(part) : holdingsHtml(part));
+    h.push(tab === 'overview' ? overviewHtml(part)
+      : (tab === 'income' ? incomeHtml(part) : holdingsHtml(part)));
   }
 
   app.innerHTML = h.join('');
@@ -576,6 +582,85 @@ function holdingsHtml(r) {
       基準日: x.匯率基準日, 來源: x.匯率來源, 抓: x.抓取時間,
     };
   }));
+  h.push(noteBlock(notes));
+  return h.join('');
+}
+
+// ---- 收入 ------------------------------------------------------------------
+
+/**
+ * 個人收入表（SPEC §7.5）。
+ *
+ * ⚠️ 這一頁跟另外兩頁的**單位不同**：那兩頁是「某一期」，這一頁是「整年」。
+ *    上面的期間下拉還是 YYYY-MM，所以標題一定要把年度寫出來，
+ *    不然 2026-07 那一格底下顯示 82 萬會被讀成「七月賺了 82 萬」。
+ *
+ * ⚠️ 數字要跟試算表的「產生個人收入表」逐字相同 —— 兩邊都走 incCompute_，
+ *    連「缺哪幾個月」那段文字也是後端算好送來的，前端不自己拼。
+ */
+function incomeHtml(r) {
+  if (r.空的) {
+    return '<p class="msg">還沒有任何薪資或獎金單。<br>'
+      + '<small>從 LINE 傳照片、在卡片上按「確認無誤」才會進來。</small></p>';
+  }
+  var h = [];
+  var notes = [];
+  var t = r.合計 || {};
+
+  h.push('<div class="total">'
+    + '<div class="row"><span class="k">' + esc(r.年度) + ' 全年　所得毛額</span>'
+    + '<span class="big">' + n(t.所得毛額) + '</span></div>'
+    + '<div class="row"><span class="k">扣繳稅額</span><span>' + n(t.扣繳稅額) + '</span></div>'
+    + '<div class="row"><span class="k">補充保費</span><span>' + n(t.補充保費) + '</span></div>'
+    + '<hr>'
+    + '<div class="row"><span class="k">單據</span><span>' + n(r.單據數) + ' 張</span></div>'
+    + '</div>');
+
+  // ⚠️ 這兩件事**不能只放在最下面的說明區**。
+  //    「還有幾張沒核對」與「缺哪幾個月」都是在講「這個合計還不完整」，
+  //    看的人得在讀那個大數字的當下就知道，不是捲到底才發現。
+  if (r.未核對 && r.未核對.length) {
+    h.push('<div class="note"><b>⚠️ 有 ' + r.未核對.length + ' 張還沒核對，沒有算進去</b><br>'
+      + esc(r.未核對.join('；')) + '</div>');
+  }
+  if (r.缺月 && !r.缺月.空的 && r.缺月.缺 && r.缺月.缺.length) {
+    h.push('<div class="note"><b>⚠️ 缺 '
+      + r.缺月.缺.map(function (m) { return m + ' 月'; }).join('、')
+      + '的月薪單</b><br>上面的合計少了那幾個月。</div>');
+  }
+
+  h.push('<h2>依所得類別</h2><div class="acct">'
+    + (r.彙總 || []).map(function (g) {
+      return '<div class="r"><span class="nm">' + esc(g.鍵 || '(未分類)')
+        + '<span class="sub">' + g.筆數 + ' 筆'
+        + (g.扣繳稅額 ? '　扣繳 ' + n(g.扣繳稅額) : '')
+        + (g.補充保費 ? '　補充保費 ' + n(g.補充保費) : '') + '</span></span>'
+        + '<span class="amt">' + n(g.所得毛額) + '</span></div>';
+    }).join('') + '</div>');
+
+  // 逐月。⚠️ 這裡的月份是**歸屬月**，跟上面「缺 N 月」的給付月不是同一件事 ——
+  //    7 月份薪資單的工獎掛在 6 月，錢卻是 8/10 才入帳。不講清楚會被當成對不起來。
+  h.push('<h2>逐月（歸屬月）</h2><div class="acct">'
+    + (r.月別 || []).map(function (g) {
+      return '<div class="r"><span class="nm">' + esc(g.鍵)
+        + '<span class="sub">' + g.筆數 + ' 筆</span></span>'
+        + '<span class="amt">' + n(g.所得毛額) + '</span></div>';
+    }).join('') + '</div>');
+
+  notes.push('<b>所得毛額是「課稅」的部分</b><br>'
+    + '伙食津貼那類免稅所得已經扣掉，所以這裡的合計會比薪資單上的應發合計小。');
+  notes.push('<b>「逐月」是歸屬月，不是入帳月</b><br>'
+    + '一張 7 月份薪資單會拆成兩列：薪水掛 7 月、上月工獎掛 6 月，'
+    + '而錢是 8/10 一起入帳。<br>'
+    + '<small>年度加總看的是給付日 —— 12 月的薪水明年 1 月才入帳，算明年。</small>');
+  if (r.缺月說明) {
+    notes.push('<b>缺件</b><br>' + esc(r.缺月說明).replace(/\n/g, '<br>'));
+  }
+  if (r.問題 && r.問題.length) {
+    // ⚠️ 先 esc 每一筆再用 <br> 接起來。反過來（先接再 esc）會把 <br> 也跳脫掉，
+    //    畫面上就出現一整行 "…<br>…" 的字。
+    notes.push('<b>⚠️ 這幾筆的數字要看一下</b><br>' + r.問題.map(esc).join('<br>'));
+  }
   h.push(noteBlock(notes));
   return h.join('');
 }
