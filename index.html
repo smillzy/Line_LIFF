@@ -227,19 +227,25 @@ function 存檔寫(data) {
 /**
  * 抓某一期的全部資料。同一期只會連線一次；force 會繞過兩邊的快取。
  */
-function load(force) {
-  var p = period;
+function load(force, latest) {
+  // latest：不指定期間，讓伺服器回最新一期（開啟時用）
+  var p = latest ? null : period;
   var slot = cache[String(p)] || (cache[String(p)] = { 狀態: 'loading' });
   if (slot.送出過 && !force) { draw(); return; }
   slot.送出過 = true;
   slot.更新中 = true;
   slot.錯誤 = null;
+  // 問最新一期時，畫面上顯示的是存檔那一格 —— 它也要掛「更新中」，
+  // 不然看起來像是已經是最新的了
+  var 畫面上 = latest ? cache[String(period)] : null;
+  if (畫面上 && 畫面上 !== slot) 畫面上.更新中 = true;
   draw();
 
   call({ action: 'web_all', idToken: idToken, '期間': p, 重算: !!force })
     .then(function (r) {
+      if (畫面上) 畫面上.更新中 = false;
       if (r && r.ok && r.期間) {
-        if (!period) period = r.期間;
+        if (!period || latest) period = r.期間;
         // ⚠️ 回來的期間可能跟送出去的不同（送 null 時一定不同），
         //    要照**回來的**那一期歸檔。照送出去的存，
         //    使用者從下拉選回同一期會整個重打一次。
@@ -249,11 +255,14 @@ function load(force) {
         存檔寫(r);
       } else {
         壞掉(p, slot, (r && r.error) || '讀不到資料');
+        if (畫面上 && 畫面上 !== slot) 畫面上.錯誤 = slot.錯誤;
       }
       draw();
     })
     .catch(function (e) {
+      if (畫面上) 畫面上.更新中 = false;
       壞掉(p, slot, String(e && e.message || e));
+      if (畫面上 && 畫面上 !== slot) 畫面上.錯誤 = slot.錯誤;
       draw();
     });
 }
@@ -302,7 +311,10 @@ if (typeof liff === 'undefined') {
         periods = 舊.data.期間清單 || [];
         cache[String(period)] = { 狀態: 'ok', data: 舊.data, 存於: 舊.存於 };
       }
-      load();   // 期間清單也在這一發裡，不要另外再打一次
+      // ⚠️ 開啟時一律問伺服器「最新一期」，存檔只拿來在等的時候先畫。
+      //    原本是拿存檔的期間去要資料 —— 第一次開時最新是 2026-09，之後就永遠停在 9 月，
+      //    10 月的價格每天在抓卻看不到（2026-10-20 實際發生）。
+      load(false, true);   // 期間清單也在這一發裡，不要另外再打一次
     })
     .catch(function (e) {
       settled = true;
